@@ -1,0 +1,802 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Busca de Empresas</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f6f7f9; --surface: #ffffff; --border: #e4e7ec; --text: #101828; --muted: #667085;
+    --accent: #2563eb; --accent-soft: #eff4ff; --ok: #12b76a; --ok-soft: #ecfdf3;
+    --bad: #f04438; --bad-soft: #fef3f2; --wa: #1da851;
+    --shadow: 0 1px 2px rgba(16,24,40,.05), 0 4px 16px rgba(16,24,40,.06);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0c111d; --surface: #161b26; --border: #2a3140; --text: #f5f5f6; --muted: #94969c;
+      --accent: #528bff; --accent-soft: #1a2540; --ok: #32d583; --ok-soft: #0f2a1e;
+      --bad: #f97066; --bad-soft: #2d1513; --wa: #32d583;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 4px 16px rgba(0,0,0,.25);
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif; -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 900px; margin: 0 auto; padding: 40px 16px 80px; }
+  h1 { font-size: 22px; font-weight: 700; margin: 0 0 4px; letter-spacing: -.01em; }
+  .sub { color: var(--muted); margin: 0 0 20px; font-size: 14px; }
+  button, input, select { font-family: inherit; }
+  button { cursor: pointer; }
+
+  /* Abas */
+  .tabs { display: inline-flex; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 4px; margin-bottom: 20px; box-shadow: var(--shadow); }
+  .tab { border: 0; background: none; color: var(--muted); font-weight: 600; font-size: 14px; padding: 8px 16px; border-radius: 8px; }
+  .tab[aria-selected="true"] { background: var(--accent); color: #fff; }
+  [hidden] { display: none !important; }
+
+  /* Campos */
+  .field { display: flex; align-items: center; gap: 10px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 0 14px; box-shadow: var(--shadow); transition: border-color .15s, box-shadow .15s; }
+  .field:focus-within { border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); }
+  .field svg { flex: none; color: var(--muted); }
+  .field input { flex: 1; border: 0; outline: 0; background: transparent; color: var(--text); font-size: 16px; font-weight: 500; padding: 14px 0; min-width: 0; }
+  select, .small-input { height: 46px; border: 1px solid var(--border); background: var(--surface); color: var(--text); border-radius: 12px; padding: 0 12px; font-size: 14px; box-shadow: var(--shadow); min-width: 0; }
+  select:focus, .small-input:focus { outline: 0; border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); }
+  .btn-primary { border: 0; border-radius: 12px; background: var(--accent); color: #fff; font-weight: 600; font-size: 15px; padding: 0 22px; height: 50px; box-shadow: var(--shadow); white-space: nowrap; }
+  .btn-primary:disabled { opacity: .55; cursor: default; }
+  .icon-btn { border: 1px solid var(--border); background: var(--surface); color: var(--text); border-radius: 8px; height: 32px; padding: 0 10px; font-size: 13px; font-weight: 500; display: inline-flex; align-items: center; gap: 6px; text-decoration: none; white-space: nowrap; }
+  .icon-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .icon-btn.wa { color: var(--wa); }
+  .icon-btn.wa:hover { border-color: var(--wa); }
+  .linkish { border: 0; background: none; color: var(--accent); padding: 0; font-size: inherit; }
+  .linkish:hover { text-decoration: underline; }
+
+  .msg { margin-top: 16px; padding: 12px 14px; border-radius: 10px; font-size: 14px; }
+  .msg.err { background: var(--bad-soft); color: var(--bad); }
+  .msg.info { color: var(--muted); padding-left: 0; }
+  .spinner { width: 16px; height: 16px; border: 2px solid rgba(255,255,255,.4); border-top-color: #fff; border-radius: 50%; animation: spin .7s linear infinite; display: inline-block; vertical-align: middle; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ---------- Nicho ---------- */
+  .nicho-grid { display: grid; grid-template-columns: 1fr 110px 220px auto; gap: 8px; }
+  .ac { position: relative; }
+  .sugs { position: absolute; z-index: 10; top: calc(100% + 6px); left: 0; right: 0; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); max-height: 360px; overflow: auto; padding: 6px; }
+  .sug { display: flex; justify-content: space-between; gap: 12px; width: 100%; text-align: left; border: 0; background: none; color: var(--text); padding: 9px 10px; border-radius: 8px; font-size: 14px; }
+  .sug:hover, .sug.active { background: var(--accent-soft); }
+  .sug .d { min-width: 0; }
+  .sug .c { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .sug .n { color: var(--muted); font-size: 12px; flex: none; font-variant-numeric: tabular-nums; }
+  .sug-h { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); padding: 8px 10px 4px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; background: var(--accent-soft); color: var(--accent); border-radius: 999px; padding: 5px 6px 5px 12px; font-size: 13px; font-weight: 500; max-width: 100%; }
+  .chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .chip button { border: 0; background: none; color: inherit; width: 20px; height: 20px; border-radius: 50%; line-height: 1; font-size: 15px; flex: none; }
+  .chip button:hover { background: rgba(37,99,235,.15); }
+  .base-info { margin-top: 12px; font-size: 12px; color: var(--muted); }
+
+  .toolbar { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 24px; align-items: center; }
+  .toolbar select, .toolbar .small-input { height: 38px; font-size: 13px; border-radius: 10px; box-shadow: none; }
+  .toolbar .small-input { flex: 1; min-width: 160px; }
+  .stats { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; margin: 16px 0 8px; font-size: 14px; }
+  .stats b { font-variant-numeric: tabular-nums; }
+  .stats .s { color: var(--muted); }
+  .stats .s b { color: var(--text); }
+
+  .list { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; box-shadow: var(--shadow); overflow: hidden; }
+  .item { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 20px; padding: 14px 18px; align-items: center; }
+  .item + .item { border-top: 1px solid var(--border); }
+  .item-nome { font-weight: 600; font-size: 15px; }
+  .item-sub { color: var(--muted); font-size: 13px; margin-top: 3px; line-height: 1.45; }
+  .item-sub .sep { margin: 0 6px; opacity: .5; }
+  .contatos { display: flex; flex-direction: column; gap: 6px; align-items: flex-end; }
+  .ct { display: flex; align-items: center; gap: 6px; }
+  .ct .v { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; margin-right: 2px; }
+  .ct .v.em { font-weight: 500; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ct .icon-btn { height: 28px; padding: 0 8px; font-size: 12px; }
+  .more { display: block; width: 100%; border: 0; border-top: 1px solid var(--border); background: none; color: var(--accent); font-weight: 600; font-size: 14px; padding: 14px; }
+  .more:hover { background: var(--accent-soft); }
+  .empty { padding: 32px; text-align: center; color: var(--muted); font-size: 14px; }
+
+  /* ---------- CNPJ ---------- */
+  .cnpj-form { display: flex; gap: 8px; max-width: 720px; }
+  .cnpj-form .field input { font-size: 17px; letter-spacing: .02em; padding: 16px 0; }
+  #cnpjPanel .card, #cnpjPanel .src, #cnpjPanel .history, #cnpjPanel .msg { max-width: 720px; }
+  .card { margin-top: 20px; background: var(--surface); border: 1px solid var(--border); border-radius: 16px; box-shadow: var(--shadow); overflow: hidden; }
+  .card-head { padding: 20px 20px 16px; border-bottom: 1px solid var(--border); }
+  .row-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+  .razao { font-size: 18px; font-weight: 700; margin: 0; line-height: 1.3; }
+  .fantasia { color: var(--muted); margin-top: 4px; font-size: 14px; }
+  .cnpj-line { margin-top: 8px; font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .badge { flex: none; font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 999px; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+  .badge::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .badge.ok { background: var(--ok-soft); color: var(--ok); }
+  .badge.bad { background: var(--bad-soft); color: var(--bad); }
+  .contacts { padding: 8px 12px; }
+  .contact { display: flex; align-items: center; gap: 12px; padding: 10px 8px; }
+  .contact + .contact { border-top: 1px dashed var(--border); }
+  .contact .ico { width: 36px; height: 36px; border-radius: 10px; background: var(--accent-soft); color: var(--accent); display: grid; place-items: center; flex: none; }
+  .contact .val { flex: 1; min-width: 0; }
+  .contact .lbl { font-size: 12px; color: var(--muted); }
+  .contact .v { font-size: 16px; font-weight: 600; word-break: break-all; font-variant-numeric: tabular-nums; }
+  .contact .v.empty { color: var(--muted); font-weight: 400; font-size: 14px; }
+  .actions { display: flex; gap: 6px; flex: none; }
+  .details { padding: 4px 20px 16px; border-top: 1px solid var(--border); }
+  .details summary { cursor: pointer; padding: 12px 0 4px; font-size: 13px; font-weight: 600; color: var(--muted); list-style: none; }
+  .details summary::-webkit-details-marker { display: none; }
+  .details summary::before { content: "▸ "; }
+  .details[open] summary::before { content: "▾ "; }
+  dl { display: grid; grid-template-columns: 140px 1fr; gap: 8px 16px; margin: 12px 0 0; font-size: 14px; }
+  dt { color: var(--muted); }
+  dd { margin: 0; }
+  .card-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 20px; background: var(--bg); border-top: 1px solid var(--border); }
+  .src { margin-top: 10px; font-size: 12px; color: var(--muted); text-align: right; }
+  .history { margin-top: 32px; }
+  .history h2 { font-size: 13px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin: 0 0 8px; display: flex; justify-content: space-between; }
+  .history h2 button { border: 0; background: none; color: var(--muted); font-size: 12px; text-transform: none; letter-spacing: 0; }
+  .history h2 button:hover { color: var(--bad); }
+  .hist-item { width: 100%; text-align: left; display: flex; justify-content: space-between; gap: 12px; background: none; border: 0; border-radius: 8px; padding: 10px 8px; color: var(--text); font-size: 14px; }
+  .hist-item:hover { background: var(--surface); }
+  .hist-item .n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .hist-item .t { color: var(--muted); flex: none; font-variant-numeric: tabular-nums; }
+
+  .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%) translateY(20px); background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 10px; font-size: 14px; opacity: 0; transition: .2s; pointer-events: none; z-index: 50; }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  @media (max-width: 720px) {
+    .wrap { padding-top: 24px; }
+    .nicho-grid { grid-template-columns: 96px 1fr; }
+    .nicho-grid .ac { grid-column: 1 / -1; }
+    .nicho-grid .btn-primary { grid-column: 1 / -1; }
+    .item { grid-template-columns: 1fr; }
+    .contatos { align-items: flex-start; }
+    .cnpj-form { flex-direction: column; }
+    dl { grid-template-columns: 1fr; gap: 2px; }
+    dd { margin-bottom: 8px; }
+    .contact { flex-wrap: wrap; }
+    .actions { width: 100%; padding-left: 48px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Busca de Empresas</h1>
+  <p class="sub">Telefone e email de empresas ativas, com base nos dados públicos da Receita Federal.</p>
+
+  <div class="tabs" role="tablist">
+    <button class="tab" role="tab" data-tab="nicho" aria-selected="true">Por nicho</button>
+    <button class="tab" role="tab" data-tab="cnpj" aria-selected="false">Por CNPJ</button>
+  </div>
+
+  <!-- ===================== NICHO ===================== -->
+  <section id="nichoPanel">
+    <form id="nichoForm" class="nicho-grid" autocomplete="off">
+      <div class="ac">
+        <label class="field">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          <input id="nichoQ" placeholder="Nicho ou atividade (ex.: dentista)" aria-label="Nicho ou atividade">
+        </label>
+        <div class="sugs" id="sugs" hidden></div>
+      </div>
+      <select id="uf" aria-label="Estado"><option value="">UF</option></select>
+      <select id="cidade" aria-label="Cidade"><option value="">Todas as cidades</option></select>
+      <button class="btn-primary" id="nichoGo" type="submit">Buscar</button>
+    </form>
+    <div class="chips" id="chips"></div>
+    <div class="base-info" id="baseInfo"></div>
+
+    <div id="nichoOut"></div>
+
+    <div id="resultsBox" hidden>
+      <div class="toolbar">
+        <select id="fContato" aria-label="Contato">
+          <option value="any">Com telefone ou email</option>
+          <option value="tel">Com telefone</option>
+          <option value="cel">Com celular (WhatsApp)</option>
+          <option value="email">Com email</option>
+          <option value="both">Com telefone e email</option>
+        </select>
+        <select id="fAbertura" aria-label="Abertura">
+          <option value="">Qualquer data de abertura</option>
+          <option value="0.5">Abertas nos últimos 6 meses</option>
+          <option value="1">Abertas no último ano</option>
+          <option value="3">Abertas nos últimos 3 anos</option>
+          <option value="-5">Abertas há mais de 5 anos</option>
+        </select>
+        <select id="fPorte" aria-label="Porte">
+          <option value="">Qualquer porte</option>
+          <option value="01">Microempresa</option>
+          <option value="03">Pequeno porte</option>
+          <option value="05">Demais</option>
+        </select>
+        <select id="fOrdem" aria-label="Ordenar">
+          <option value="nome">Ordenar por nome</option>
+          <option value="recentes">Mais recentes primeiro</option>
+          <option value="antigas">Mais antigas primeiro</option>
+          <option value="bairro">Por bairro</option>
+        </select>
+        <input class="small-input" id="fTexto" placeholder="Filtrar por nome ou bairro" aria-label="Filtrar">
+      </div>
+      <div class="stats">
+        <div class="s" id="stats"></div>
+        <button class="icon-btn" id="exportar" type="button">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></svg>
+          Exportar planilha
+        </button>
+      </div>
+      <div class="list" id="list"></div>
+    </div>
+  </section>
+
+  <!-- ===================== CNPJ ===================== -->
+  <section id="cnpjPanel" hidden>
+    <form id="cnpjForm" class="cnpj-form" autocomplete="off">
+      <label class="field" style="flex:1">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input id="q" inputmode="text" placeholder="00.000.000/0000-00" maxlength="18" aria-label="CNPJ">
+      </label>
+      <button class="btn-primary" id="go" type="submit">Buscar</button>
+    </form>
+    <div id="out"></div>
+    <section class="history" id="history" hidden>
+      <h2>Consultas recentes <button type="button" id="clearHist">limpar</button></h2>
+      <div id="histList"></div>
+    </section>
+  </section>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+(() => {
+  // Repositório do índice no Hugging Face. Preenchido automaticamente na publicação
+  // (GitHub Actions troca o marcador abaixo). Para testes: ?dados=http://localhost:8765
+  const HF_REPO = '__HF_REPO__';
+  const DADOS = new URLSearchParams(location.search).get('dados')
+    || (HF_REPO.includes('__') ? '' : `https://huggingface.co/datasets/${HF_REPO}/resolve/main`);
+
+  const $ = (s) => document.querySelector(s);
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+  const norm = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  const cap = (s) => String(s || '').toLowerCase().replace(/(^|[\s/(-])\S/g, (m) => m.toUpperCase());
+  const fmtNum = (n) => Number(n || 0).toLocaleString('pt-BR');
+  const fmtCnae = (c) => String(c).replace(/^(\d{4})(\d)(\d{2})$/, '$1-$2/$3');
+  const fmtDate = (s) => { if (!s) return ''; s = String(s); if (/^\d{8}$/.test(s)) return `${s.slice(6)}/${s.slice(4, 6)}/${s.slice(0, 4)}`; const [y, m, d] = s.slice(0, 10).split('-'); return d ? `${d}/${m}/${y}` : s; };
+  const store = { get: (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } }, set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} } };
+
+  // ---------- Toast + copiar ----------
+  let tt;
+  const toast = (m) => { const t = $('#toast'); t.textContent = m; t.classList.add('show'); clearTimeout(tt); tt = setTimeout(() => t.classList.remove('show'), 1600); };
+  document.addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-copy]'); if (!b) return;
+    try { await navigator.clipboard.writeText(b.dataset.copy); toast('Copiado'); } catch { toast('Não foi possível copiar'); }
+  });
+
+  // ---------- CNPJ (numérico e alfanumérico) ----------
+  const clean = (s) => (s || '').toUpperCase().replace(/[^0-9A-Z]/g, '').slice(0, 14);
+  const mask = (c) => {
+    c = clean(c); let r = c.slice(0, 2);
+    if (c.length > 2) r += '.' + c.slice(2, 5);
+    if (c.length > 5) r += '.' + c.slice(5, 8);
+    if (c.length > 8) r += '/' + c.slice(8, 12);
+    if (c.length > 12) r += '-' + c.slice(12, 14);
+    return r;
+  };
+  const valid = (c) => {
+    if (!/^[0-9A-Z]{12}\d{2}$/.test(c) || /^(\d)\1{13}$/.test(c)) return false;
+    const v = [...c].map((ch) => ch.charCodeAt(0) - 48);
+    const dv = (n) => { let sum = 0, w = n - 7; for (let i = 0; i < n; i++) { sum += v[i] * w--; if (w < 2) w = 9; } const r = sum % 11; return r < 2 ? 0 : 11 - r; };
+    return dv(12) === v[12] && dv(13) === v[13];
+  };
+
+  // ---------- Telefone ----------
+  // A Receita guarda muitos celulares no formato antigo (8 dígitos, sem o 9).
+  // Números de 8 dígitos começando com 6–9 são celulares: adicionamos o 9.
+  const phone = (raw, forceMobile = false) => {
+    let d = String(raw || '').replace(/\D/g, '').replace(/^0+/, '');
+    if (d.length < 10 || d.length > 11) return null;
+    let ddd = d.slice(0, 2), n = d.slice(2);
+    if (n.length === 8 && (forceMobile || /^[6-9]/.test(n))) n = '9' + n;
+    const mobile = n.length === 9 && n[0] === '9';
+    const fmt = mobile ? `(${ddd}) ${n.slice(0, 5)}-${n.slice(5)}` : `(${ddd}) ${n.slice(0, 4)}-${n.slice(4)}`;
+    return { digits: ddd + n, fmt, mobile };
+  };
+  const uniqPhones = (arr) => arr.filter(Boolean).filter((p, i, a) => a.findIndex((x) => x.digits === p.digits) === i);
+  const waLink = (p) => `https://wa.me/55${p.digits}`;
+
+  // ---------- Abas ----------
+  function showTab(name) {
+    document.querySelectorAll('.tab').forEach((t) => t.setAttribute('aria-selected', String(t.dataset.tab === name)));
+    $('#nichoPanel').hidden = name !== 'nicho';
+    $('#cnpjPanel').hidden = name !== 'cnpj';
+    store.set('buscaempresas.tab', name);
+    (name === 'cnpj' ? $('#q') : $('#nichoQ')).focus();
+  }
+  document.querySelectorAll('.tab').forEach((t) => t.onclick = () => showTab(t.dataset.tab));
+
+  // =====================================================================
+  //  BUSCA POR NICHO (índice próprio montado a partir da base da Receita)
+  // =====================================================================
+  // Nichos comuns -> atividades (CNAE). Os termos extras ajudam a achar pelo jeito que se fala.
+  const NICHOS = [
+    ['Dentista / odontologia', ['8630504'], 'odontologo clinica odontologica consultorio dentario ortodontia'],
+    ['Médico / clínica médica', ['8630501', '8630502', '8630503'], 'consultorio medico clinica'],
+    ['Psicólogo', ['8650003'], 'psicologia psicanalise terapia'],
+    ['Fisioterapia', ['8650004'], 'fisioterapeuta pilates'],
+    ['Nutricionista', ['8650002'], 'nutricao'],
+    ['Fonoaudiologia', ['8650006'], 'fonoaudiologo'],
+    ['Laboratório / análises clínicas', ['8640202'], 'exames'],
+    ['Veterinário / clínica veterinária', ['7500100'], 'vet animais'],
+    ['Pet shop', ['4789004'], 'petshop racao animais'],
+    ['Banho e tosa', ['9609208'], 'pet tosa'],
+    ['Farmácia / drogaria', ['4771701', '4771702'], 'manipulacao'],
+    ['Ótica', ['4774100'], 'otica oculos'],
+    ['Advogado / advocacia', ['6911701'], 'escritorio de advocacia juridico'],
+    ['Contador / contabilidade', ['6920601'], 'escritorio contabil contabilista'],
+    ['Imobiliária / corretor de imóveis', ['6821801', '6821802', '6822600'], 'imoveis aluguel'],
+    ['Corretora de seguros', ['6622300'], 'seguro'],
+    ['Academia', ['9313100'], 'musculacao crossfit ginastica'],
+    ['Salão de beleza / cabeleireiro / barbearia', ['9602501'], 'barbeiro manicure pedicure unhas cabelo'],
+    ['Estética', ['9602502'], 'clinica de estetica depilacao sobrancelha'],
+    ['Restaurante', ['5611201'], 'pizzaria churrascaria comida'],
+    ['Lanchonete / cafeteria', ['5611203'], 'cafe hamburgueria sucos acai'],
+    ['Bar', ['5611204', '5611205'], 'boteco choperia'],
+    ['Padaria', ['1091102', '4721102'], 'confeitaria panificadora'],
+    ['Supermercado / mercado', ['4711301', '4711302', '4712100'], 'mercearia minimercado'],
+    ['Açougue', ['4722901'], 'acougue carnes'],
+    ['Oficina mecânica', ['4520001'], 'mecanica auto center'],
+    ['Funilaria / pintura automotiva', ['4520002'], 'lanternagem'],
+    ['Lava-jato', ['4520005'], 'lava jato lavagem de carros estetica automotiva'],
+    ['Autopeças', ['4530703'], 'autopecas'],
+    ['Autoescola', ['8599601'], 'auto escola cfc'],
+    ['Escola / educação infantil', ['8511200', '8512100', '8513900'], 'creche colegio'],
+    ['Curso de idiomas', ['8593700'], 'ingles escola de idiomas'],
+    ['Hotel', ['5510801'], 'hospedagem'],
+    ['Construtora', ['4120400'], 'construcao obras'],
+    ['Material de construção', ['4744099', '4744001'], 'ferragens'],
+    ['Arquitetura', ['7111100'], 'arquiteto'],
+    ['Engenharia', ['7112000'], 'engenheiro'],
+    ['Agência de marketing / publicidade', ['7311400', '7319002', '7319004'], 'agencia propaganda'],
+    ['Desenvolvimento de software / TI', ['6201501', '6202300', '6204000'], 'tecnologia programacao sistemas'],
+    ['Assistência técnica de informática', ['9511800'], 'conserto computador'],
+    ['Loja de roupas', ['4781400'], 'moda boutique vestuario'],
+    ['Loja de calçados', ['4782201'], 'sapataria calcados'],
+    ['Loja de móveis', ['4754701'], 'moveis'],
+    ['Floricultura', ['4789002'], 'flores'],
+    ['Papelaria', ['4761003'], ''],
+    ['Gráfica', ['1813001', '1813099'], 'grafica impressao'],
+    ['Lavanderia', ['9601701'], ''],
+    ['Buffet / eventos', ['5620102', '8230001'], 'festas'],
+    ['Fotógrafo', ['7420001'], 'fotografia'],
+    ['Transportadora', ['4930201', '4930202'], 'frete transporte de carga'],
+    ['Eletricista / energia solar', ['4321500'], 'instalacao eletrica'],
+    ['Encanador / instalações hidráulicas', ['4322301'], 'hidraulica'],
+    ['Limpeza / conservação', ['8121400'], 'faxina'],
+    ['Segurança / vigilância', ['8011101'], 'vigilante'],
+    ['Consultoria empresarial', ['7020400'], 'consultor'],
+    ['Condomínio', ['8112500'], 'sindico'],
+    ['Igreja / organização religiosa', ['9491000'], 'templo'],
+    ['Loja de celulares', ['4752100'], 'celular'],
+    ['Loja de informática', ['4751201'], 'computadores'],
+    ['Bicicletaria', ['4763603'], 'bike'],
+    ['Joalheria', ['4783101'], 'joias relojoaria'],
+    ['Cosméticos / perfumaria', ['4772500'], 'perfumes maquiagem'],
+    ['Distribuidora de bebidas', ['4723700'], 'adega deposito de bebidas'],
+    ['Posto de combustível', ['4731800'], 'posto de gasolina'],
+    ['Agência de viagens', ['7911200'], 'turismo'],
+    ['Hospital', ['8610101'], ''],
+  ].map(([label, codes, extra]) => ({ label, codes, key: norm(label + ' ' + extra) }));
+
+  const UFS = 'AC AL AM AP BA CE DF ES GO MA MG MS MT PA PB PE PI PR RJ RN RO RR RS SC SE SP TO'.split(' ');
+  const PORTES = { '01': 'Microempresa', '03': 'Pequeno porte', '05': 'Demais' };
+  const base = { ok: false, pasta: '', manifest: null, cnaes: {}, cnaesNorm: [], municipios: {}, totalPorCnae: {} };
+  let selecionados = store.get('buscaempresas.cnaes', []);
+  let dados = [], filtrados = [], mostrando = 0;
+  const PAGINA = 100;
+  const shardCache = new Map();
+
+  $('#uf').innerHTML += UFS.map((u) => `<option>${u}</option>`).join('');
+
+  async function carregarBase() {
+    if (!DADOS) {
+      $('#baseInfo').innerHTML = 'A base de busca por nicho ainda não foi publicada. A busca por CNPJ já funciona normalmente.';
+      return;
+    }
+    try {
+      const atual = await (await fetch(`${DADOS}/atual.json`, { cache: 'no-store' })).json();
+      base.pasta = `${DADOS}/${atual.pasta}`;
+      const [manifest, cnaes, municipios] = await Promise.all(
+        ['manifest.json', 'cnaes.json', 'municipios.json'].map((f) => fetch(`${base.pasta}/${f}`).then((r) => { if (!r.ok) throw new Error(f); return r.json(); })));
+      Object.assign(base, { ok: true, manifest, cnaes, municipios });
+      base.cnaesNorm = Object.entries(cnaes).map(([c, d]) => [c, d, norm(d)]);
+      for (const uf of Object.keys(manifest.shards)) for (const [c, n] of Object.entries(manifest.shards[uf])) base.totalPorCnae[c] = (base.totalPorCnae[c] || 0) + n;
+      const [y, m] = manifest.mes.split('-');
+      const mes = new Date(+y, +m - 1, 1).toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' }).replace('.', '');
+      $('#baseInfo').textContent = `Base da Receita de ${mes} · ${fmtNum(manifest.total)} empresas ativas com telefone ou email`;
+      renderChips();
+      const ufSalva = store.get('buscaempresas.uf', '');
+      if (ufSalva) { $('#uf').value = ufSalva; preencherCidades(); $('#cidade').value = store.get('buscaempresas.cidade', ''); }
+    } catch (e) {
+      $('#baseInfo').textContent = 'Não foi possível carregar a base de busca por nicho agora. Tente recarregar a página.';
+    }
+  }
+
+  function preencherCidades() {
+    const uf = $('#uf').value;
+    const lista = base.municipios[uf] || [];
+    $('#cidade').innerHTML = '<option value="">Todas as cidades</option>' + lista.map(([c, n]) => `<option value="${esc(c)}">${esc(cap(n))}</option>`).join('');
+  }
+  $('#uf').onchange = () => { preencherCidades(); store.set('buscaempresas.uf', $('#uf').value); store.set('buscaempresas.cidade', ''); };
+  $('#cidade').onchange = () => { store.set('buscaempresas.cidade', $('#cidade').value); if (dados.length) aplicarFiltros(); };
+
+  // ---------- Sugestões de nicho/atividade ----------
+  let sugItems = [], sugIdx = -1;
+  const contagem = (codes) => {
+    const uf = $('#uf').value;
+    return codes.reduce((s, c) => s + (uf ? (base.manifest?.shards[uf]?.[c] || 0) : (base.totalPorCnae[c] || 0)), 0);
+  };
+  function sugerir() {
+    const q = norm($('#nichoQ').value.trim());
+    if (q.length < 2) { $('#sugs').hidden = true; return; }
+    const termos = q.split(/\s+/);
+    const nichos = NICHOS.filter((n) => termos.every((t) => n.key.includes(t))).slice(0, 5);
+    const ativ = base.cnaesNorm.filter(([c, , d]) => termos.every((t) => d.includes(t)) || c.startsWith(q.replace(/\D/g, '') || 'x'))
+      .sort((a, b) => (base.totalPorCnae[b[0]] || 0) - (base.totalPorCnae[a[0]] || 0)).slice(0, 10);
+    sugItems = [
+      ...nichos.map((n) => ({ codes: n.codes, titulo: n.label, desc: n.codes.map((c) => base.cnaes[c] || fmtCnae(c)).join(' · ') })),
+      ...ativ.map(([c, d]) => ({ codes: [c], titulo: d, desc: `CNAE ${fmtCnae(c)}` })),
+    ];
+    sugIdx = sugItems.length ? 0 : -1;
+    const uf = $('#uf').value;
+    let html = '';
+    sugItems.forEach((s, i) => {
+      if (i === 0 && nichos.length) html += '<div class="sug-h">Nichos</div>';
+      if (i === nichos.length && ativ.length) html += '<div class="sug-h">Atividades (CNAE)</div>';
+      const n = base.ok ? `${fmtNum(contagem(s.codes))}${uf ? ' em ' + uf : ''}` : '';
+      html += `<button type="button" class="sug${i === sugIdx ? ' active' : ''}" data-i="${i}"><div class="d"><div>${esc(s.titulo)}</div><div class="c">${esc(s.desc)}</div></div><div class="n">${n}</div></button>`;
+    });
+    $('#sugs').innerHTML = html || '<div class="sug-h">Nenhuma atividade encontrada</div>';
+    $('#sugs').hidden = false;
+  }
+  function escolher(i) {
+    const s = sugItems[i]; if (!s) return;
+    for (const c of s.codes) if (!selecionados.includes(c)) selecionados.push(c);
+    store.set('buscaempresas.cnaes', selecionados);
+    $('#nichoQ').value = ''; $('#sugs').hidden = true; renderChips();
+  }
+  function renderChips() {
+    $('#chips').innerHTML = selecionados.map((c) => `<span class="chip" title="${esc(fmtCnae(c))}"><span>${esc(base.cnaes[c] || fmtCnae(c))}</span><button type="button" data-rm="${c}" aria-label="Remover">×</button></span>`).join('');
+  }
+  $('#chips').onclick = (e) => {
+    const b = e.target.closest('[data-rm]'); if (!b) return;
+    selecionados = selecionados.filter((c) => c !== b.dataset.rm); store.set('buscaempresas.cnaes', selecionados); renderChips();
+  };
+  $('#nichoQ').addEventListener('input', sugerir);
+  $('#nichoQ').addEventListener('focus', sugerir);
+  $('#nichoQ').addEventListener('keydown', (e) => {
+    if ($('#sugs').hidden || !sugItems.length) return;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault(); sugIdx = (sugIdx + (e.key === 'ArrowDown' ? 1 : -1) + sugItems.length) % sugItems.length;
+      document.querySelectorAll('.sug').forEach((el) => el.classList.toggle('active', +el.dataset.i === sugIdx));
+    } else if (e.key === 'Enter') { e.preventDefault(); escolher(sugIdx); }
+    else if (e.key === 'Escape') { $('#sugs').hidden = true; }
+  });
+  $('#sugs').addEventListener('mousedown', (e) => { const b = e.target.closest('[data-i]'); if (b) { e.preventDefault(); escolher(+b.dataset.i); } });
+  document.addEventListener('click', (e) => { if (!e.target.closest('.ac')) $('#sugs').hidden = true; });
+
+  // ---------- Carregar e ler os arquivos do índice ----------
+  async function baixarShard(uf, cnae) {
+    const url = `${base.pasta}/${uf}/${cnae}.csv.gz`;
+    if (shardCache.has(url)) return shardCache.get(url);
+    const p = (async () => {
+      const r = await fetch(url); if (!r.ok) throw new Error('Falha ao baixar ' + url);
+      const buf = new Uint8Array(await r.arrayBuffer());
+      let texto;
+      if (buf[0] === 0x1f && buf[1] === 0x8b) texto = await new Response(new Blob([buf]).stream().pipeThrough(new DecompressionStream('gzip'))).text();
+      else texto = new TextDecoder().decode(buf); // servidor já descompactou
+      return parseLinhas(texto, cnae);
+    })();
+    shardCache.set(url, p);
+    p.catch(() => shardCache.delete(url));
+    return p;
+  }
+  function splitCSV(l) {
+    if (!l.includes('"')) return l.split(';');
+    const out = []; let f = '', q = false;
+    for (let i = 0; i < l.length; i++) {
+      const c = l[i];
+      if (q) { if (c === '"') { if (l[i + 1] === '"') { f += '"'; i++; } else q = false; } else f += c; }
+      else if (c === '"') q = true; else if (c === ';') { out.push(f); f = ''; } else f += c;
+    }
+    out.push(f); return out;
+  }
+  function parseLinhas(texto, cnae) {
+    const rows = [];
+    for (const l of texto.split('\n')) {
+      if (!l) continue;
+      const [cnpj, razao, fantasia, mun, bairro, endereco, cep, t1, t2, email, abertura, matriz, porte] = splitCSV(l);
+      const phones = uniqPhones([phone(t1), phone(t2)]);
+      const nome = fantasia || razao || '(sem nome cadastrado)';
+      rows.push({ cnpj, razao, fantasia, nome, mun, bairro, endereco, cep, phones, email, abertura, matriz, porte, cnae,
+        temCel: phones.some((p) => p.mobile), busca: norm(`${nome} ${razao} ${bairro}`) });
+    }
+    return rows;
+  }
+
+  let buscando = false;
+  $('#nichoForm').onsubmit = async (e) => {
+    e.preventDefault();
+    if (buscando) return;
+    const out = $('#nichoOut');
+    if (!base.ok) { out.innerHTML = `<div class="msg err">${esc($('#baseInfo').textContent || 'Base indisponível.')}</div>`; return; }
+    if (!selecionados.length && sugItems.length && !$('#sugs').hidden) escolher(sugIdx);
+    if (!selecionados.length) { out.innerHTML = '<div class="msg err">Escolha pelo menos um nicho ou atividade.</div>'; return; }
+    const uf = $('#uf').value;
+    if (!uf) { out.innerHTML = '<div class="msg err">Escolha o estado (UF).</div>'; $('#uf').focus(); return; }
+    const existentes = selecionados.filter((c) => base.manifest.shards[uf]?.[c]);
+    if (!existentes.length) { dados = []; $('#resultsBox').hidden = true; out.innerHTML = `<div class="msg info">Nenhuma empresa ativa com contato nessas atividades em ${uf}.</div>`; return; }
+
+    buscando = true; $('#nichoGo').disabled = true; $('#nichoGo').innerHTML = '<span class="spinner"></span>';
+    out.innerHTML = '<div class="msg info">Carregando empresas…</div>';
+    try {
+      const partes = await Promise.all(existentes.map((c) => baixarShard(uf, c)));
+      dados = partes.flat();
+      out.innerHTML = '';
+      const p = new URLSearchParams({ n: selecionados.join(','), uf });
+      if ($('#cidade').value) p.set('c', $('#cidade').value);
+      history.replaceState(null, '', location.search + '#' + p);
+      $('#resultsBox').hidden = false;
+      aplicarFiltros();
+    } catch (err) {
+      out.innerHTML = '<div class="msg err">Não foi possível carregar as empresas agora. Tente novamente.</div>';
+    } finally {
+      buscando = false; $('#nichoGo').disabled = false; $('#nichoGo').textContent = 'Buscar';
+    }
+  };
+
+  // ---------- Filtros, ordenação e lista ----------
+  function aplicarFiltros() {
+    const cidade = $('#cidade').value, contato = $('#fContato').value, ab = $('#fAbertura').value, porte = $('#fPorte').value;
+    const termos = norm($('#fTexto').value.trim()).split(/\s+/).filter(Boolean);
+    let limite = null;
+    if (ab) {
+      const d = new Date(); const anos = Math.abs(+ab);
+      d.setMonth(d.getMonth() - Math.round(anos * 12));
+      limite = { antes: +ab < 0, v: d.toISOString().slice(0, 10).replace(/-/g, '') };
+    }
+    filtrados = dados.filter((r) => {
+      if (cidade && r.mun !== cidade) return false;
+      if (contato === 'tel' && !r.phones.length) return false;
+      if (contato === 'cel' && !r.temCel) return false;
+      if (contato === 'email' && !r.email) return false;
+      if (contato === 'both' && !(r.phones.length && r.email)) return false;
+      if (contato === 'any' && !(r.phones.length || r.email)) return false;
+      if (porte && r.porte !== porte) return false;
+      if (limite && (limite.antes ? r.abertura > limite.v : r.abertura < limite.v)) return false;
+      if (termos.length && !termos.every((t) => r.busca.includes(t))) return false;
+      return true;
+    });
+    const o = $('#fOrdem').value;
+    const cmpNome = (a, b) => a.nome.localeCompare(b.nome, 'pt-BR');
+    filtrados.sort(o === 'recentes' ? (a, b) => b.abertura.localeCompare(a.abertura)
+      : o === 'antigas' ? (a, b) => a.abertura.localeCompare(b.abertura)
+      : o === 'bairro' ? (a, b) => a.bairro.localeCompare(b.bairro, 'pt-BR') || cmpNome(a, b) : cmpNome);
+
+    const nTel = filtrados.filter((r) => r.phones.length).length;
+    const nCel = filtrados.filter((r) => r.temCel).length;
+    const nEm = filtrados.filter((r) => r.email).length;
+    $('#stats').innerHTML = `<b>${fmtNum(filtrados.length)}</b> empresas · <b>${fmtNum(nTel)}</b> com telefone (${fmtNum(nCel)} celulares) · <b>${fmtNum(nEm)}</b> com email`;
+    mostrando = 0; $('#list').innerHTML = ''; mostrarMais();
+  }
+  ['#fContato', '#fAbertura', '#fPorte', '#fOrdem'].forEach((s) => $(s).addEventListener('change', aplicarFiltros));
+  let ft; $('#fTexto').addEventListener('input', () => { clearTimeout(ft); ft = setTimeout(aplicarFiltros, 150); });
+
+  const nomeCidade = (uf, cod) => { const m = (base.municipios[uf] || []).find(([c]) => c === cod); return m ? cap(m[1]) : ''; };
+
+  function itemHTML(r) {
+    const uf = $('#uf').value;
+    const cidade = nomeCidade(uf, r.mun);
+    const local = [norm(r.bairro) === norm(cidade) ? '' : cap(r.bairro), cidade].filter(Boolean).join(', ');
+    const sub2 = [local, r.abertura && `aberta em ${fmtDate(r.abertura).slice(3)}`, selecionados.length > 1 && (base.cnaes[r.cnae] || '')].filter(Boolean);
+    const tels = r.phones.map((p) => `<div class="ct"><span class="v">${esc(p.fmt)}</span>
+        ${p.mobile ? `<a class="icon-btn wa" href="${waLink(p)}" target="_blank" rel="noopener" title="Abrir no WhatsApp">WhatsApp</a>` : `<a class="icon-btn" href="tel:+55${p.digits}">Ligar</a>`}
+        <button class="icon-btn" data-copy="${esc(p.fmt)}">Copiar</button></div>`).join('');
+    const em = r.email ? `<div class="ct"><span class="v em" title="${esc(r.email)}">${esc(r.email)}</span><button class="icon-btn" data-copy="${esc(r.email)}">Copiar</button></div>` : '';
+    return `<div class="item">
+      <div>
+        <div class="item-nome">${esc(cap(r.nome))}</div>
+        <div class="item-sub">${r.fantasia && r.razao ? esc(cap(r.razao)) + '<span class="sep">·</span>' : ''}<button class="linkish" data-ver="${esc(r.cnpj)}" title="Ver dados atualizados">${esc(mask(r.cnpj))}</button></div>
+        <div class="item-sub">${sub2.map(esc).join('<span class="sep">·</span>')}</div>
+      </div>
+      <div class="contatos">${tels}${em}</div>
+    </div>`;
+  }
+  function mostrarMais() {
+    $('#list .more')?.remove();
+    const fatia = filtrados.slice(mostrando, mostrando + PAGINA);
+    mostrando += fatia.length;
+    if (!filtrados.length) { $('#list').innerHTML = '<div class="empty">Nenhuma empresa com esses filtros.</div>'; return; }
+    $('#list').insertAdjacentHTML('beforeend', fatia.map(itemHTML).join(''));
+    if (mostrando < filtrados.length) $('#list').insertAdjacentHTML('beforeend', `<button class="more" type="button">Mostrar mais (${fmtNum(filtrados.length - mostrando)} restantes)</button>`);
+  }
+  $('#list').addEventListener('click', (e) => {
+    if (e.target.closest('.more')) return mostrarMais();
+    const v = e.target.closest('[data-ver]');
+    if (v) { showTab('cnpj'); $('#q').value = mask(v.dataset.ver); buscarCnpj(); }
+  });
+
+  // ---------- Exportar planilha (CSV que abre no Excel) ----------
+  $('#exportar').onclick = () => {
+    if (!filtrados.length) return toast('Nada para exportar');
+    const uf = $('#uf').value;
+    const cel = (s) => { s = String(s ?? ''); return /[;"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+    const head = ['Nome', 'Razão social', 'CNPJ', 'Telefone 1', 'Telefone 2', 'Celular/WhatsApp', 'Email', 'Endereço', 'Bairro', 'Cidade', 'UF', 'CEP', 'Abertura', 'Porte', 'Atividade'];
+    const linhas = filtrados.map((r) => [cap(r.nome), r.razao, mask(r.cnpj), r.phones[0]?.fmt, r.phones[1]?.fmt,
+      r.phones.find((p) => p.mobile) ? waLink(r.phones.find((p) => p.mobile)) : '', r.email, cap(r.endereco), cap(r.bairro), nomeCidade(uf, r.mun), uf,
+      r.cep.replace(/^(\d{5})(\d{3})$/, '$1-$2'), fmtDate(r.abertura), PORTES[r.porte] || '', base.cnaes[r.cnae] || r.cnae]);
+    const csv = '﻿' + [head, ...linhas].map((l) => l.map(cel).join(';')).join('\r\n');
+    const nicho = norm(base.cnaes[selecionados[0]] || 'empresas').replace(/[^a-z0-9]+/g, '-').slice(0, 30);
+    const cid = $('#cidade').value ? '_' + norm(nomeCidade(uf, $('#cidade').value)).replace(/[^a-z0-9]+/g, '-') : '';
+    const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' })), download: `${nicho}_${uf}${cid}.csv` });
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    toast(`${fmtNum(filtrados.length)} empresas exportadas`);
+  };
+
+  // =====================================================================
+  //  BUSCA POR CNPJ (APIs públicas, dados mais atualizados)
+  // =====================================================================
+  const q = $('#q'), out = $('#out'), go = $('#go');
+  const money = (v) => v == null || v === '' ? '' : Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  const fmtCep = (c) => c ? String(c).replace(/\D/g, '').replace(/^(\d{5})(\d{3})$/, '$1-$2') : '';
+  const joinAddr = (l1, l2, cep) => [l1, l2, cep && `CEP ${cep}`].filter(Boolean).join(' · ');
+
+  // CNPJá vem primeiro: é a fonte pública que traz o email e tem dados mais recentes.
+  const fromCnpja = (d) => {
+    const a = d.address || {}, c = d.company || {};
+    return {
+      razao: c.name, fantasia: d.alias, situacao: d.status?.text,
+      phones: uniqPhones((d.phones || []).map((p) => phone(`${p.area}${p.number}`, p.type === 'MOBILE'))),
+      emails: [...new Set((d.emails || []).map((e) => (e.address || '').toLowerCase().trim()).filter(Boolean))],
+      endereco: joinAddr([a.street, a.number, a.details].filter(Boolean).join(', '), [a.district, [a.city, a.state].filter(Boolean).join('/')].filter(Boolean).join(' – '), fmtCep(a.zip)),
+      cnae: d.mainActivity ? `${d.mainActivity.id} · ${d.mainActivity.text}` : '',
+      abertura: d.founded, porte: c.size?.text, natureza: c.nature?.text, capital: c.equity,
+      mei: c.simei?.optant, tipo: d.head === true ? 'Matriz' : d.head === false ? 'Filial' : '',
+      socios: (c.members || []).map((m) => ({ nome: m.person?.name, qual: m.role?.text })),
+      atualizado: d.updated,
+    };
+  };
+  const fromReceita = (d) => ({
+    razao: d.razao_social, fantasia: d.nome_fantasia, situacao: cap(d.descricao_situacao_cadastral),
+    phones: uniqPhones([d.ddd_telefone_1, d.ddd_telefone_2].map((t) => phone(t))),
+    emails: d.email ? [String(d.email).toLowerCase().trim()] : [],
+    endereco: joinAddr([cap(d.logradouro), d.numero, cap(d.complemento)].filter(Boolean).join(', '), [cap(d.bairro), [cap(d.municipio), d.uf].filter(Boolean).join('/')].filter(Boolean).join(' – '), fmtCep(d.cep)),
+    cnae: d.cnae_fiscal_descricao ? `${d.cnae_fiscal} · ${d.cnae_fiscal_descricao}` : '',
+    abertura: d.data_inicio_atividade, porte: cap(d.porte || d.descricao_porte), natureza: d.natureza_juridica,
+    capital: d.capital_social, mei: d.opcao_pelo_mei, tipo: cap(d.descricao_identificador_matriz_filial),
+    socios: (d.qsa || []).map((s) => ({ nome: cap(s.nome_socio), qual: s.qualificacao_socio })),
+    semEmail: true,
+  });
+  const SOURCES = [
+    { name: 'CNPJá', url: (c) => `https://open.cnpja.com/office/${c}`, map: fromCnpja },
+    { name: 'BrasilAPI', url: (c) => `https://brasilapi.com.br/api/cnpj/v1/${c}`, map: fromReceita },
+    { name: 'Minha Receita', url: (c) => `https://minhareceita.org/${c}`, map: fromReceita },
+  ];
+  async function lookup(cnpj) {
+    let notFound = false;
+    for (const s of SOURCES) {
+      try {
+        const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 12000);
+        const r = await fetch(s.url(cnpj), { signal: ctrl.signal }); clearTimeout(t);
+        if (r.ok) return { data: s.map(await r.json()), source: s.name };
+        if (r.status === 404 || r.status === 400) notFound = true;
+      } catch (_) { /* tenta a próxima fonte */ }
+    }
+    throw new Error(notFound ? 'CNPJ não encontrado na base da Receita.' : 'Serviços de consulta indisponíveis no momento. Tente novamente em instantes.');
+  }
+
+  const ICONS = {
+    phone: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/></svg>',
+    mail: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/></svg>',
+    pin: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>',
+  };
+  function contactRow(icon, label, value, actions = '', emptyText = 'Não informado') {
+    return `<div class="contact"><div class="ico">${ICONS[icon]}</div>
+      <div class="val"><div class="lbl">${label}</div>${value ? `<div class="v">${esc(value)}</div>` : `<div class="v empty">${esc(emptyText)}</div>`}</div>
+      ${value ? `<div class="actions">${actions}</div>` : ''}</div>`;
+  }
+  const copyBtn = (text) => `<button class="icon-btn" data-copy="${esc(text)}">Copiar</button>`;
+
+  function render(d, cnpj, source) {
+    const { phones, emails } = d;
+    const sit = d.situacao || '';
+    const ativa = /^ativa$/i.test(sit.trim());
+    const addr = d.endereco;
+    const socios = d.socios.filter((s) => s.nome).map((s) => `${esc(s.nome)}${s.qual ? ` <span style="color:var(--muted)">— ${esc(s.qual)}</span>` : ''}`);
+    const mei = d.mei === true ? 'Sim' : d.mei === false ? 'Não' : '';
+    const phoneRows = phones.length
+      ? phones.map((p, i) => contactRow('phone', `Telefone${phones.length > 1 ? ' ' + (i + 1) : ''}${p.mobile ? ' · celular' : ''}`, p.fmt,
+          copyBtn(p.fmt) + `<a class="icon-btn wa" href="${waLink(p)}" target="_blank" rel="noopener">WhatsApp</a>` + `<a class="icon-btn" href="tel:+55${p.digits}">Ligar</a>`)).join('')
+      : contactRow('phone', 'Telefone', '');
+    const emailRows = emails.length
+      ? emails.map((e, i) => contactRow('mail', `Email${emails.length > 1 ? ' ' + (i + 1) : ''}`, e, copyBtn(e) + `<a class="icon-btn" href="mailto:${esc(e)}">Enviar</a>`)).join('')
+      : contactRow('mail', 'Email', '', '', d.semEmail ? 'Não disponível na fonte reserva. Tente de novo em 1 minuto.' : 'Não informado');
+    const rows = [
+      ['Atividade principal', esc(d.cnae)], ['Abertura', esc(fmtDate(d.abertura))], ['Tipo', esc(d.tipo)], ['Porte', esc(d.porte)],
+      ['Natureza jurídica', esc(d.natureza)], ['Capital social', esc(money(d.capital))], ['MEI', esc(mei)], ['Sócios', socios.join('<br>')],
+    ].filter(([, v]) => v);
+    const summary = [d.razao, d.fantasia && `Fantasia: ${d.fantasia}`, `CNPJ: ${mask(cnpj)}`, ...phones.map((p) => `Tel: ${p.fmt}`),
+      ...emails.map((e) => `Email: ${e}`), addr && `Endereço: ${addr}`, d.cnae && `Atividade: ${d.cnae}`, sit && `Situação: ${sit}`].filter(Boolean).join('\n');
+
+    out.innerHTML = `
+      <article class="card">
+        <div class="card-head">
+          <div class="row-top">
+            <div><h2 class="razao">${esc(d.razao)}</h2>${d.fantasia ? `<div class="fantasia">${esc(d.fantasia)}</div>` : ''}</div>
+            ${sit ? `<span class="badge ${ativa ? 'ok' : 'bad'}">${esc(sit)}</span>` : ''}
+          </div>
+          <div class="cnpj-line">CNPJ ${esc(mask(cnpj))}</div>
+        </div>
+        <div class="contacts">${phoneRows}${emailRows}${contactRow('pin', 'Endereço', addr, copyBtn(addr))}</div>
+        ${rows.length ? `<details class="details"><summary>Mais dados</summary><dl>${rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl></details>` : ''}
+        <div class="card-foot"><button class="icon-btn" data-copy="${esc(summary)}">Copiar resumo</button></div>
+      </article>
+      <div class="src">Fonte: ${esc(source)} · Receita Federal${d.atualizado ? ` · atualizado em ${esc(fmtDate(d.atualizado))}` : ''}</div>`;
+    saveHistory({ cnpj, nome: d.fantasia || d.razao, tel: phones[0]?.fmt || '' });
+  }
+
+  // Histórico (só neste navegador)
+  const HIST_KEY = 'buscacnpj.hist';
+  function saveHistory(item) { store.set(HIST_KEY, [item, ...store.get(HIST_KEY, []).filter((h) => h.cnpj !== item.cnpj)].slice(0, 15)); renderHistory(); }
+  function renderHistory() {
+    const h = store.get(HIST_KEY, []);
+    $('#history').hidden = !h.length;
+    $('#histList').innerHTML = h.map((i) => `<button class="hist-item" data-cnpj="${esc(i.cnpj)}"><span class="n">${esc(i.nome)}</span><span class="t">${esc(i.tel || mask(i.cnpj))}</span></button>`).join('');
+  }
+  $('#clearHist').onclick = () => { store.set(HIST_KEY, []); renderHistory(); };
+  $('#histList').onclick = (e) => { const b = e.target.closest('[data-cnpj]'); if (!b) return; q.value = mask(b.dataset.cnpj); buscarCnpj(); };
+
+  let busy = false;
+  async function buscarCnpj() {
+    const cnpj = clean(q.value);
+    if (!valid(cnpj)) { out.innerHTML = '<div class="msg err">CNPJ inválido. Confira os números digitados.</div>'; return; }
+    if (busy) return;
+    busy = true; go.disabled = true; go.innerHTML = '<span class="spinner"></span>';
+    out.innerHTML = '<div class="msg info">Consultando…</div>';
+    try {
+      const { data, source } = await lookup(cnpj);
+      render(data, cnpj, source);
+      history.replaceState(null, '', location.search + '#' + cnpj);
+    } catch (e) {
+      out.innerHTML = `<div class="msg err">${esc(e.message)}</div>`;
+    } finally {
+      busy = false; go.disabled = false; go.textContent = 'Buscar';
+    }
+  }
+  q.addEventListener('input', () => {
+    const pos = q.selectionStart, before = q.value.length;
+    q.value = mask(q.value);
+    const p = Math.max(0, pos + (q.value.length - before)); q.setSelectionRange(p, p);
+  });
+  q.addEventListener('paste', () => setTimeout(() => { if (valid(clean(q.value))) buscarCnpj(); }, 0));
+  $('#cnpjForm').onsubmit = (e) => { e.preventDefault(); buscarCnpj(); };
+
+  // ---------- Início ----------
+  renderHistory();
+  renderChips();
+  const hash = location.hash.slice(1);
+  const pronta = carregarBase();
+  if (hash.startsWith('n=')) {
+    // Link compartilhado de busca por nicho: #n=8630504&uf=SE&c=3105
+    const p = new URLSearchParams(hash);
+    selecionados = (p.get('n') || '').split(',').filter((c) => /^\d{7}$/.test(c));
+    showTab('nicho'); renderChips();
+    pronta.then(() => {
+      renderChips();
+      if (!p.get('uf')) return;
+      $('#uf').value = p.get('uf'); preencherCidades(); $('#cidade').value = p.get('c') || '';
+      $('#nichoForm').requestSubmit();
+    });
+  } else if (clean(hash)) { showTab('cnpj'); q.value = mask(hash); buscarCnpj(); }
+  else showTab(store.get('buscaempresas.tab', 'nicho'));
+})();
+</script>
+</body>
+</html>

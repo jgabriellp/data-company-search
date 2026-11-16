@@ -1,0 +1,10 @@
+# Pastas temporárias do script de atualização
+trabalho/
+saida/
+*.part
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/

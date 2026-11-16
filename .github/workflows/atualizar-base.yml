@@ -1,0 +1,58 @@
+name: Atualizar base de empresas
+
+# Confere duas vezes por semana se a Receita publicou um mês novo.
+# Se sim, reconstrói o índice (~1h) e publica no Hugging Face. Se não, termina em segundos.
+on:
+  schedule:
+    - cron: '0 11 * * 1,4'   # segundas e quintas, 08:00 (Brasília)
+  workflow_dispatch:
+    inputs:
+      forcar:
+        description: 'Reconstruir mesmo que o mês já esteja publicado'
+        type: boolean
+        default: false
+
+concurrency:
+  group: atualizar-base
+  cancel-in-progress: false
+
+permissions:
+  contents: write   # para registrar a data da última atualização no repositório
+
+jobs:
+  atualizar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Instalar dependências
+        run: pip install -r pipeline/requirements.txt
+
+      - name: Liberar espaço em disco
+        run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL && df -h /
+
+      - name: Montar e publicar a base
+        id: base
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_REPO: ${{ vars.HF_REPO }}
+        run: |
+          python pipeline/atualizar_base.py \
+            --trabalho "$RUNNER_TEMP/trabalho" --saida "$RUNNER_TEMP/saida" \
+            ${{ inputs.forcar && '--forcar' || '' }}
+
+      # O GitHub desativa rotinas agendadas em repositórios sem atividade por 60 dias.
+      # Registrar cada atualização mantém a rotina viva.
+      - name: Registrar atualização
+        if: steps.base.outputs.atualizado == 'true'
+        run: |
+          echo "{\"mes\": \"${{ steps.base.outputs.mes }}\", \"publicado_em\": \"$(date -u +%FT%TZ)\"}" > ultima-atualizacao.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ultima-atualizacao.json
+          git commit -m "Base da Receita ${{ steps.base.outputs.mes }} publicada" && git push || echo "Nada a registrar"
