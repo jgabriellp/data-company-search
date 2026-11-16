@@ -58,15 +58,23 @@ def propfind(caminho=''):
         return r.read().decode('utf-8', 'replace')
 
 
-def ultimo_mes():
-    meses = sorted(set(re.findall(r'/webdav/(\d{4}-\d{2})/', propfind())))
-    if not meses:
-        raise SystemExit('Nenhum mês encontrado no repositório da Receita.')
-    return meses[-1]
+NECESSARIOS = {f'{p}{i}.zip' for p in ('Empresas', 'Estabelecimentos') for i in range(10)} | {'Cnaes.zip', 'Municipios.zip'}
 
 
 def arquivos_do_mes(mes):
     return set(re.findall(r'/webdav/\d{4}-\d{2}/([A-Za-z0-9_]+\.zip)', propfind(mes + '/')))
+
+
+def ultimo_mes_completo():
+    """Mês mais recente com todos os arquivos. A Receita cria a pasta do mês antes de
+    terminar de publicar, então um mês novo pode aparecer incompleto por algumas horas."""
+    meses = sorted(set(re.findall(r'/webdav/(\d{4}-\d{2})/', propfind())), reverse=True)
+    for mes in meses[:3]:
+        faltando = NECESSARIOS - arquivos_do_mes(mes)
+        if not faltando:
+            return mes
+        log(f'Mês {mes} ainda incompleto na Receita (faltam {len(faltando)} arquivos), tentando o anterior')
+    raise SystemExit('Nenhum mês completo encontrado no repositório da Receita.')
 
 
 def baixar(mes, nome, destino: Path, tentativas=8):
@@ -329,17 +337,17 @@ def main():
     if not a.sem_upload and (not a.hf_repo or not os.environ.get('HF_TOKEN')):
         raise SystemExit('Defina HF_REPO e HF_TOKEN (ou use --sem-upload).')
 
-    mes = a.mes or (ultimo_mes() if not a.arquivos_locais else 'local')
+    if a.mes or a.arquivos_locais:
+        mes = a.mes or 'local'
+        if not a.arquivos_locais and (faltando := NECESSARIOS - arquivos_do_mes(mes)):
+            raise SystemExit(f'Mês {mes} incompleto na Receita (faltam {sorted(faltando)}). Tente mais tarde.')
+    else:
+        mes = ultimo_mes_completo()
     log(f'Mês da Receita: {mes}')
     if not a.sem_upload and not a.forcar and mes_publicado(a.hf_repo) == mes:
         log('Esse mês já está publicado. Nada a fazer.')
         sinalizar(False, mes)
         return
-
-    if not a.arquivos_locais:
-        faltando = {f'{p}{i}.zip' for p in ('Empresas', 'Estabelecimentos') for i in range(10)} - arquivos_do_mes(mes)
-        if faltando:
-            raise SystemExit(f'Mês {mes} incompleto na Receita (faltam {sorted(faltando)}). Tente mais tarde.')
 
     trabalho, raiz = Path(a.trabalho), Path(a.saida)
     shutil.rmtree(raiz / mes, ignore_errors=True)
