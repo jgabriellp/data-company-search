@@ -51,11 +51,26 @@ def log(*a):
 
 # ---------------------------------------------------------------- Receita (download)
 
-def propfind(caminho=''):
-    req = urllib.request.Request(WEBDAV + caminho, method='PROPFIND',
-                                 headers={'Depth': '1', 'Authorization': AUTH})
-    with urllib.request.urlopen(req, timeout=120) as r:
-        return r.read().decode('utf-8', 'replace')
+USER_AGENT = 'Mozilla/5.0 (compatible; busca-empresas/1.0)'
+
+
+def propfind(caminho='', tentativas=8):
+    """Lista uma pasta. O servidor da Receita às vezes responde 500 ou uma página de erro
+    no lugar da listagem, então validamos a resposta e tentamos de novo."""
+    for t in range(1, tentativas + 1):
+        try:
+            req = urllib.request.Request(WEBDAV + caminho, method='PROPFIND',
+                                         headers={'Depth': '1', 'Authorization': AUTH, 'User-Agent': USER_AGENT})
+            with urllib.request.urlopen(req, timeout=120) as r:
+                corpo = r.read().decode('utf-8', 'replace')
+                if r.status == 207 and 'multistatus' in corpo:
+                    return corpo
+                motivo = f'resposta inesperada (HTTP {r.status})'
+        except Exception as e:  # noqa: BLE001
+            motivo = str(e)
+        log(f'  listagem de "{caminho or "/"}" falhou (tentativa {t}/{tentativas}): {motivo}')
+        time.sleep(min(120, 10 * t))
+    raise SystemExit('O servidor da Receita não respondeu à listagem. Tente novamente mais tarde.')
 
 
 NECESSARIOS = {f'{p}{i}.zip' for p in ('Empresas', 'Estabelecimentos') for i in range(10)} | {'Cnaes.zip', 'Municipios.zip'}
@@ -84,7 +99,7 @@ def baixar(mes, nome, destino: Path, tentativas=8):
     for t in range(1, tentativas + 1):
         try:
             pos = parcial.stat().st_size if parcial.exists() else 0
-            headers = {'Authorization': AUTH}
+            headers = {'Authorization': AUTH, 'User-Agent': USER_AGENT}
             if pos:
                 headers['Range'] = f'bytes={pos}-'
             with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=300) as r:
