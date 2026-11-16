@@ -1,14 +1,22 @@
 name: Atualizar base de empresas
 
 # Confere duas vezes por semana se a Receita publicou um mês novo.
-# Se sim, reconstrói o índice (~1h) e publica no Hugging Face. Se não, termina em segundos.
+# Se sim, reconstrói o índice (~3h) e publica no Hugging Face. Se não, termina em segundos.
+#
+# Retomada: cada arquivo da Receita processado vira um intermediário, guardado no cache
+# do GitHub ao fim da execução MESMO SE ELA FALHAR. Rodando de novo, o script pula o que
+# já foi feito. O envio ao Hugging Face também pula arquivos já enviados.
 on:
   schedule:
     - cron: '0 11 * * 1,4'   # segundas e quintas, 08:00 (Brasília)
   workflow_dispatch:
     inputs:
       forcar:
-        description: 'Reconstruir mesmo que o mês já esteja publicado'
+        description: 'Publicar de novo mesmo que o mês já esteja publicado'
+        type: boolean
+        default: false
+      do_zero:
+        description: 'Começar do zero (ignorar o progresso guardado)'
         type: boolean
         default: false
 
@@ -17,7 +25,8 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: write   # para registrar a data da última atualização no repositório
+  contents: write   # registrar a data da última atualização no repositório
+  actions: write    # apagar caches antigos de progresso
 
 jobs:
   atualizar:
@@ -36,6 +45,17 @@ jobs:
       - name: Liberar espaço em disco
         run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL && df -h /
 
+      - name: Recuperar progresso de execuções anteriores
+        if: ${{ !inputs.do_zero }}
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            trabalho/est
+            trabalho/emp
+            trabalho/mes.txt
+          key: progresso-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: progresso-
+
       - name: Montar e publicar a base
         id: base
         env:
@@ -43,8 +63,30 @@ jobs:
           HF_REPO: ${{ vars.HF_REPO }}
         run: |
           python pipeline/atualizar_base.py \
-            --trabalho "$RUNNER_TEMP/trabalho" --saida "$RUNNER_TEMP/saida" \
+            --trabalho trabalho --saida "$RUNNER_TEMP/saida" \
             ${{ inputs.forcar && '--forcar' || '' }}
+
+      # Roda mesmo se a etapa anterior falhar: é isso que permite retomar de onde parou.
+      - name: Guardar progresso
+        id: salvar
+        if: always() && steps.base.outputs.atualizado != 'false' && hashFiles('trabalho/mes.txt') != ''
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            trabalho/est
+            trabalho/emp
+            trabalho/mes.txt
+          key: progresso-${{ github.run_id }}-${{ github.run_attempt }}
+
+      # Mantém só o progresso mais recente (o limite de cache do repositório é 10 GB).
+      - name: Apagar progresso antigo
+        if: always() && steps.salvar.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          atual="progresso-${{ github.run_id }}-${{ github.run_attempt }}"
+          gh cache list --repo "$GITHUB_REPOSITORY" --key progresso- --limit 100 --json key --jq '.[].key' \
+            | { grep -vx "$atual" || true; } | while read -r k; do gh cache delete "$k" --repo "$GITHUB_REPOSITORY" || true; done
 
       # O GitHub desativa rotinas agendadas em repositórios sem atividade por 60 dias.
       # Registrar cada atualização mantém a rotina viva.

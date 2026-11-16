@@ -92,7 +92,7 @@ def ultimo_mes_completo():
     raise SystemExit('Nenhum mês completo encontrado no repositório da Receita.')
 
 
-def baixar(mes, nome, destino: Path, tentativas=8):
+def baixar(mes, nome, destino: Path, tentativas=20):
     """Baixa com retomada (Range) — o servidor da Receita costuma ser instável."""
     url = f'{WEBDAV}{mes}/{nome}'
     parcial = destino.with_name(destino.name + '.part')
@@ -116,7 +116,7 @@ def baixar(mes, nome, destino: Path, tentativas=8):
             parcial.unlink(missing_ok=True)
         except Exception as e:  # noqa: BLE001
             log(f'  falha ao baixar {nome} (tentativa {t}/{tentativas}): {e}')
-        time.sleep(min(60, 5 * t))
+        time.sleep(min(120, 5 * t))
     raise SystemExit(f'Não foi possível baixar {nome}')
 
 
@@ -169,60 +169,95 @@ def email(s):
 
 # ---------------------------------------------------------------- etapas
 
-def processar_estabelecimentos(fonte: Fonte, saida: Path):
-    """Filtra ativos com contato. Retorna o conjunto de CNPJs básicos (8 primeiros caracteres)."""
-    basicos = set()
+def etapa_por_arquivo(fonte: Fonte, nome_zip, pasta: Path, gravar):
+    """Processa um .zip em um intermediário próprio (pasta/<nome>.csv.gz).
+    Se o intermediário já existe (execução anterior, restaurada do cache), pula o arquivo.
+    Grava primeiro num .tmp e só renomeia no fim, para nunca aproveitar um arquivo pela metade."""
+    final = pasta / nome_zip.replace('.zip', '.csv.gz')
+    if final.exists():
+        log(f'{nome_zip} já processado em execução anterior, pulando')
+        return
+    z = fonte.obter(nome_zip)
+    if not z:
+        return
+    log(f'Processando {z.name}')
+    tmp = final.with_name(final.name + '.tmp')
+    with gzip.open(tmp, 'wt', encoding='utf-8', newline='', compresslevel=1) as f:
+        gravar(z, csv.writer(f, delimiter=';', lineterminator='\n'))
+    tmp.replace(final)
+    fonte.descartar(z)
+
+
+def processar_estabelecimentos(fonte: Fonte, pasta: Path):
+    """Filtra ativos com contato, um intermediário por arquivo da Receita."""
+    pasta.mkdir(parents=True, exist_ok=True)
+    for i in range(10):
+        etapa_por_arquivo(fonte, f'Estabelecimentos{i}.zip', pasta, gravar_estabelecimentos)
+
+
+def gravar_estabelecimentos(z: Path, w):
     lidos = gravados = 0
-    with gzip.open(saida, 'wt', encoding='utf-8', newline='', compresslevel=1) as f:
-        w = csv.writer(f, delimiter=';', lineterminator='\n')
-        for i in range(10):
-            z = fonte.obter(f'Estabelecimentos{i}.zip')
-            if not z:
-                continue
-            log(f'Processando {z.name}')
-            for r in linhas_zip(z):
-                lidos += 1
-                if len(r) < 28 or r[5] != '02':  # 02 = ATIVA
-                    continue
-                uf = r[19].strip()
-                cnae = r[11].strip()
-                if uf not in UFS or not re.fullmatch(r'\d{7}', cnae):
-                    continue
-                t1, t2, em = telefone(r[21], r[22]), telefone(r[23], r[24]), email(r[27])
-                if t2 == t1:
-                    t2 = ''
-                if not t1 and t2:
-                    t1, t2 = t2, ''
-                if not (t1 or em):
-                    continue
-                endereco = limpa(' '.join(x for x in (r[13], r[14]) if x.strip()))
-                if r[15].strip():
-                    endereco += ', ' + limpa(r[15])
-                if r[16].strip():
-                    endereco += ' ' + limpa(r[16])
-                basico = r[0].strip()
-                w.writerow([basico, basico + r[1].strip() + r[2].strip(), limpa(r[4]), uf, cnae,
-                            r[20].strip(), limpa(r[17]), endereco.strip(' ,'), re.sub(r'\D', '', r[18]),
-                            t1, t2, em, r[10].strip(), r[3].strip()])
-                basicos.add(basico)
-                gravados += 1
-            fonte.descartar(z)
-            log(f'  {lidos:,} lidos, {gravados:,} ativos com contato até aqui')
+    for r in linhas_zip(z):
+        lidos += 1
+        if len(r) < 28 or r[5] != '02':  # 02 = ATIVA
+            continue
+        uf = r[19].strip()
+        cnae = r[11].strip()
+        if uf not in UFS or not re.fullmatch(r'\d{7}', cnae):
+            continue
+        t1, t2, em = telefone(r[21], r[22]), telefone(r[23], r[24]), email(r[27])
+        if t2 == t1:
+            t2 = ''
+        if not t1 and t2:
+            t1, t2 = t2, ''
+        if not (t1 or em):
+            continue
+        endereco = limpa(' '.join(x for x in (r[13], r[14]) if x.strip()))
+        if r[15].strip():
+            endereco += ', ' + limpa(r[15])
+        if r[16].strip():
+            endereco += ' ' + limpa(r[16])
+        basico = r[0].strip()
+        w.writerow([basico, basico + r[1].strip() + r[2].strip(), limpa(r[4]), uf, cnae,
+                    r[20].strip(), limpa(r[17]), endereco.strip(' ,'), re.sub(r'\D', '', r[18]),
+                    t1, t2, em, r[10].strip(), r[3].strip()])
+        gravados += 1
+    log(f'  {z.name}: {lidos:,} lidos, {gravados:,} ativos com contato')
+
+
+def basicos_dos_intermediarios(pasta: Path):
+    """CNPJs básicos (8 primeiros caracteres) presentes nos estabelecimentos já filtrados."""
+    basicos = set()
+    for p in sorted(pasta.glob('*.csv.gz')):
+        with gzip.open(p, 'rt', encoding='utf-8', newline='') as f:
+            basicos.update(l.split(';', 1)[0] for l in f)
+    log(f'{len(basicos):,} empresas distintas nos estabelecimentos filtrados')
     return basicos
 
 
-def processar_empresas(fonte: Fonte, basicos: set, saida: Path):
-    with gzip.open(saida, 'wt', encoding='utf-8', newline='', compresslevel=1) as f:
-        w = csv.writer(f, delimiter=';', lineterminator='\n')
-        for i in range(10):
-            z = fonte.obter(f'Empresas{i}.zip')
-            if not z:
-                continue
-            log(f'Processando {z.name}')
-            for r in linhas_zip(z):
-                if len(r) >= 6 and r[0] in basicos:
-                    w.writerow([r[0], limpa(r[1]), r[5].strip()])
-            fonte.descartar(z)
+def processar_empresas(fonte: Fonte, basicos: set, pasta: Path):
+    pasta.mkdir(parents=True, exist_ok=True)
+
+    def gravar(z, w):
+        for r in linhas_zip(z):
+            if len(r) >= 6 and r[0] in basicos:
+                w.writerow([r[0], limpa(r[1]), r[5].strip()])
+
+    for i in range(10):
+        etapa_por_arquivo(fonte, f'Empresas{i}.zip', pasta, gravar)
+
+
+def preparar_trabalho(trabalho: Path, mes):
+    """Reaproveita intermediários de uma execução anterior só se forem do mesmo mês."""
+    marca = trabalho / 'mes.txt'
+    if trabalho.exists() and (not marca.exists() or marca.read_text().strip() != mes):
+        log('Intermediários de outro mês encontrados, descartando')
+        shutil.rmtree(trabalho)
+    trabalho.mkdir(parents=True, exist_ok=True)
+    marca.write_text(mes)
+    prontos = len(list(trabalho.glob('*/*.csv.gz')))
+    if prontos:
+        log(f'Retomando: {prontos} arquivos já processados em execução anterior')
 
 
 def tabela_simples(fonte: Fonte, nome):
@@ -249,8 +284,8 @@ def gerar_indice(trabalho: Path, destino: Path, memoria: str):
     cur = con.execute(f"""
         SELECT e.uf, e.cnae, e.cnpj, m.razao, e.fantasia, e.municipio, e.bairro, e.endereco, e.cep,
                e.tel1, e.tel2, e.email, e.abertura, e.matriz, m.porte
-        FROM read_csv('{(trabalho / 'est.csv.gz').as_posix()}', {opts}, columns={est_cols}) e
-        LEFT JOIN read_csv('{(trabalho / 'emp.csv.gz').as_posix()}', {opts}, columns={emp_cols}) m
+        FROM read_csv('{(trabalho / 'est' / '*.csv.gz').as_posix()}', {opts}, columns={est_cols}) e
+        LEFT JOIN read_csv('{(trabalho / 'emp' / '*.csv.gz').as_posix()}', {opts}, columns={emp_cols}) m
           ON m.basico = e.basico
         ORDER BY e.uf, e.cnae, e.municipio, coalesce(nullif(e.fantasia, ''), m.razao)
     """)
@@ -313,26 +348,55 @@ O arquivo `atual.json` aponta para o mês vigente.
 """
 
 
-def publicar(repo, raiz: Path, mes):
-    from huggingface_hub import HfApi
+def com_tentativas(descricao, funcao, tentativas=5):
+    for t in range(1, tentativas + 1):
+        try:
+            return funcao()
+        except Exception as e:  # noqa: BLE001
+            if t == tentativas:
+                raise
+            log(f'  {descricao} falhou (tentativa {t}/{tentativas}): {e}')
+            time.sleep(30 * t)
+
+
+def publicar(repo, raiz: Path, mes, lote=1000):
+    """Envia o índice em lotes. Arquivos que já estão no Hugging Face são pulados,
+    então rodar de novo depois de uma falha continua de onde parou."""
+    from huggingface_hub import CommitOperationAdd, HfApi
 
     api = HfApi(token=os.environ['HF_TOKEN'])
     api.create_repo(repo, repo_type='dataset', exist_ok=True)
-    log(f'Enviando {mes} para huggingface.co/datasets/{repo}')
-    api.upload_large_folder(repo_id=repo, repo_type='dataset', folder_path=str(raiz),
-                            allow_patterns=[f'{mes}/**'])
-    (raiz / 'README.md').write_text(README_HF, encoding='utf-8')
-    (raiz / 'atual.json').write_text(json.dumps({'mes': mes, 'pasta': mes}), encoding='utf-8')
-    api.upload_folder(repo_id=repo, repo_type='dataset', folder_path=str(raiz),
-                      allow_patterns=['README.md', 'atual.json'],
-                      commit_message=f'Base {mes} publicada')
+
+    try:
+        ja_enviados = {e.path for e in api.list_repo_tree(repo, path_in_repo=mes, recursive=True, repo_type='dataset')}
+    except Exception:  # noqa: BLE001 — pasta do mês ainda não existe
+        ja_enviados = set()
+    arquivos = sorted(p for p in (raiz / mes).rglob('*') if p.is_file())
+    pendentes = [p for p in arquivos if p.relative_to(raiz).as_posix() not in ja_enviados]
+    total_lotes = -(-len(pendentes) // lote)
+    log(f'Enviando {mes} para huggingface.co/datasets/{repo}: {len(pendentes):,} arquivos '
+        f'({len(arquivos) - len(pendentes):,} já enviados) em {total_lotes} lotes')
+    for n, i in enumerate(range(0, len(pendentes), lote), 1):
+        ops = [CommitOperationAdd(path_in_repo=p.relative_to(raiz).as_posix(), path_or_fileobj=str(p))
+               for p in pendentes[i:i + lote]]
+        com_tentativas(f'lote {n}/{total_lotes}', lambda: api.create_commit(
+            repo, ops, commit_message=f'{mes}: lote {n}/{total_lotes}', repo_type='dataset'))
+        log(f'  lote {n}/{total_lotes} enviado')
+
+    # Só depois de tudo enviado o ponteiro passa a apontar para o mês novo.
+    ops = [CommitOperationAdd(path_in_repo='README.md', path_or_fileobj=README_HF.encode('utf-8')),
+           CommitOperationAdd(path_in_repo='atual.json', path_or_fileobj=json.dumps({'mes': mes, 'pasta': mes}).encode())]
+    com_tentativas('atualizar atual.json', lambda: api.create_commit(
+        repo, ops, commit_message=f'Base {mes} publicada', repo_type='dataset'))
+
     antigos = [e.path for e in api.list_repo_tree(repo, repo_type='dataset')
                if re.fullmatch(r'\d{4}-\d{2}', e.path) and e.path != mes]
     for p in antigos:
         log(f'Removendo mês antigo {p}')
-        api.delete_folder(p, repo_id=repo, repo_type='dataset', commit_message=f'Remove {p}')
+        com_tentativas(f'remover {p}', lambda: api.delete_folder(
+            p, repo_id=repo, repo_type='dataset', commit_message=f'Remove {p}'))
     # Compacta o histórico para não acumular gigabytes de versões antigas.
-    api.super_squash_history(repo_id=repo, repo_type='dataset')
+    com_tentativas('compactar histórico', lambda: api.super_squash_history(repo_id=repo, repo_type='dataset'))
 
 
 # ---------------------------------------------------------------- main
@@ -365,15 +429,16 @@ def main():
         return
 
     trabalho, raiz = Path(a.trabalho), Path(a.saida)
+    preparar_trabalho(trabalho, mes)
     shutil.rmtree(raiz / mes, ignore_errors=True)
-    trabalho.mkdir(parents=True, exist_ok=True)
     destino = raiz / mes
     destino.mkdir(parents=True)
     fonte = Fonte(mes, trabalho, Path(a.arquivos_locais) if a.arquivos_locais else None)
 
     inicio = time.time()
-    basicos = processar_estabelecimentos(fonte, trabalho / 'est.csv.gz')
-    processar_empresas(fonte, basicos, trabalho / 'emp.csv.gz')
+    processar_estabelecimentos(fonte, trabalho / 'est')
+    basicos = basicos_dos_intermediarios(trabalho / 'est')
+    processar_empresas(fonte, basicos, trabalho / 'emp')
     del basicos
     cnaes = tabela_simples(fonte, 'Cnaes.zip')
     nomes_mun = tabela_simples(fonte, 'Municipios.zip')

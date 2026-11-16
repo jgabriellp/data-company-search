@@ -1,2 +1,2 @@
-duckdb>=1.1
-huggingface_hub>=0.30
+duckdb==2.0.0
+huggingface_hub==2.4.0
